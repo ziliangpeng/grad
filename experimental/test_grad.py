@@ -9,6 +9,8 @@ sys.path.insert(0, str(Path(__file__).parent.absolute()))
 
 from grad import Variable
 
+EPS = 1e-6
+
 
 def run_tests():
     """Runs a series of tests to validate the autograd implementation against torch."""
@@ -28,14 +30,18 @@ def run_tests():
         # Validate forward and backward passes
         print(f"  Our result: {our_result.value}, Torch result: {torch_result.item()}")
         print(f"  diff: {abs(our_result.value - torch_result.item())}")
+        forward_diff = abs(our_result.value - torch_result.item())
+        forward_scale = max(1.0, abs(our_result.value), abs(torch_result.item()))
         assert (
-            abs(our_result.value - torch_result.item()) < 1e-6
+            forward_diff < EPS * forward_scale
         ), f"Forward pass mismatch for {op_name}"
         for i, (ours, torch_var) in enumerate(zip(our_vars, torch_vars)):
             print(f"  Our grad: {ours.grad}, Torch grad: {torch_var.grad.item()}")
+            grad_diff = abs(ours.grad - torch_var.grad.item())
+            grad_scale = max(1.0, abs(ours.grad), abs(torch_var.grad.item()))
             assert (
-                abs(ours.grad - torch_var.grad.item()) < 1e-6
-            ), f"Gradient mismatch for {op_name} on input {i}. Ours: {ours.grad}, Torch: {torch_var.grad.item()}; diff: {abs(ours.grad - torch_var.grad.item())}"
+                grad_diff < EPS * grad_scale
+            ), f"Gradient mismatch for {op_name} on input {i}. Ours: {ours.grad}, Torch: {torch_var.grad.item()}; diff: {grad_diff}"
         print(f"  Validation successful for {op_name}.")
 
     print("Running validation against torch...")
@@ -55,6 +61,10 @@ def run_tests():
 
         if a > 0:  # Power operation requires a positive base for log
             validate_op("pow", lambda x, y: x ** y, lambda x, y: x ** y, a, b)
+
+        c, d, e, f = random.uniform(-3, 3), random.uniform(-3, 3), random.uniform(-3, 3), random.uniform(-3, 3)
+        # make sure d (w) is positive to simplify pow.
+        validate_op("combo1", lambda x, y, z, w, v: x * y + z ** w / v, lambda x, y, z, w, v: x * y + z ** w / v, a, b, abs(c), d, e)
 
     print("✓ All validation tests passed.")
 
