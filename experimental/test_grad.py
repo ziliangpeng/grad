@@ -1,7 +1,8 @@
 import random
 import sys
 from pathlib import Path
-from micrograd import engine as mg
+import torch
+# from micrograd import engine as mg
 
 # Add the experimental directory to the Python path to allow sibling imports
 sys.path.insert(0, str(Path(__file__).parent.absolute()))
@@ -10,32 +11,34 @@ from grad import Variable
 
 
 def run_tests():
-    """Runs a series of tests to validate the autograd implementation against micrograd."""
+    """Runs a series of tests to validate the autograd implementation against torch."""
 
-    def validate_op(op_name, our_fn, micro_fn, *args):
+    def validate_op(op_name, our_fn, torch_fn, *args):
         print(f"  Validating op: {op_name} with args {args}")
         # Our implementation
         our_vars = [Variable(value=val, requires_grad=True) for val in args]
         our_result = our_fn(*our_vars)
         our_result.backward()
 
-        # Micrograd implementation
-        micro_vars = [mg.Value(val) for val in args]
-        micro_result = micro_fn(*micro_vars)
-        micro_result.backward()
+        # PyTorch implementation
+        torch_vars = [torch.tensor(float(val), requires_grad=True) for val in args]
+        torch_result = torch_fn(*torch_vars)
+        torch_result.backward()
 
         # Validate forward and backward passes
-        print(f"  Our result: {our_result.value}, Micro result: {micro_result.data}")
+        print(f"  Our result: {our_result.value}, Torch result: {torch_result.item()}")
+        print(f"  diff: {abs(our_result.value - torch_result.item())}")
         assert (
-            abs(our_result.value - micro_result.data) < 1e-6
+            abs(our_result.value - torch_result.item()) < 1e-6
         ), f"Forward pass mismatch for {op_name}"
-        for i, (ours, micro) in enumerate(zip(our_vars, micro_vars)):
+        for i, (ours, torch_var) in enumerate(zip(our_vars, torch_vars)):
+            print(f"  Our grad: {ours.grad}, Torch grad: {torch_var.grad.item()}")
             assert (
-                abs(ours.grad - micro.grad) < 1e-6
-            ), f"Gradient mismatch for {op_name} on input {i}"
+                abs(ours.grad - torch_var.grad.item()) < 1e-6
+            ), f"Gradient mismatch for {op_name} on input {i}. Ours: {ours.grad}, Torch: {torch_var.grad.item()}; diff: {abs(ours.grad - torch_var.grad.item())}"
         print(f"  Validation successful for {op_name}.")
 
-    print("Running validation against micrograd...")
+    print("Running validation against torch...")
 
     for i in range(20):
         print(f"Starting test iteration {i+1}/20...")
@@ -48,10 +51,10 @@ def run_tests():
         validate_op(
             "div", lambda x, y: x / y, lambda x, y: x / y, a, max(b, 0.1)
         )  # Avoid division by zero
-        # validate_op("exp", lambda x: x.exp(), lambda x: x.exp(), a)
+        validate_op("exp", lambda x: x.exp(), lambda x: x.exp(), a)
 
-        # if a > 0:  # Power operation requires a positive base for log
-            # validate_op("pow", lambda x, y: x ** y, lambda x, y: x ** y, a, b)
+        if a > 0:  # Power operation requires a positive base for log
+            validate_op("pow", lambda x, y: x ** y, lambda x, y: x ** y, a, b)
 
     print("✓ All validation tests passed.")
 
